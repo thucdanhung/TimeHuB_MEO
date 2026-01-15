@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập | TimeHub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white/90 backdrop-blur-lg w-full max-w-md p-8 rounded-3xl shadow-2xl relative">
+        <h2 id="form-title" class="text-3xl font-bold text-gray-800 mb-2 text-center">Đăng nhập</h2>
+        <p class="text-gray-500 text-center mb-8">Quản lý thời gian biểu thông minh</p>
+
+        <div id="error-msg" class="hidden bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm font-medium"></div>
+
+        <form id="auth-form" class="space-y-5">
+            <div id="name-field" class="hidden">
+                <input type="text" id="name" placeholder="Họ và tên" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <input type="email" id="email" placeholder="Email" required class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <input type="password" id="password" placeholder="Mật khẩu" required class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <button type="submit" id="submit-btn" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition transform active:scale-95">
+                Đăng nhập
+            </button>
+        </form>
+
+        <div class="mt-6 text-center text-sm text-gray-500">
+            <span id="toggle-text">Chưa có tài khoản? </span>
+            <button id="toggle-btn" class="text-blue-600 font-bold hover:underline">Đăng ký ngay</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth } from './js/firebase-config.js';
+        import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, onAuthStateChanged } 
+        from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        // Kiểm tra nếu đã login thì đá sang dashboard
+        onAuthStateChanged(auth, (user) => {
+            if (user) window.location.href = 'dashboard.html';
+        });
+
+        const form = document.getElementById('auth-form');
+        const isLogin = { value: true }; // Trạng thái Login/Register
+
+        document.getElementById('toggle-btn').addEventListener('click', () => {
+            isLogin.value = !isLogin.value;
+            document.getElementById('form-title').innerText = isLogin.value ? "Đăng nhập" : "Đăng ký";
+            document.getElementById('name-field').style.display = isLogin.value ? 'none' : 'block';
+            document.getElementById('submit-btn').innerText = isLogin.value ? "Đăng nhập" : "Đăng ký ngay";
+            document.getElementById('toggle-text').innerText = isLogin.value ? "Chưa có tài khoản? " : "Đã có tài khoản? ";
+            document.getElementById('toggle-btn').innerText = isLogin.value ? "Đăng ký ngay" : "Đăng nhập";
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error-msg');
+            const btn = document.getElementById('submit-btn');
+
+            errorDiv.classList.add('hidden');
+            btn.innerText = "Đang xử lý...";
+            btn.disabled = true;
+
+            try {
+                if (isLogin.value) {
+                    await signInWithEmailAndPassword(auth, email, password);
+                } else {
+                    const name = document.getElementById('name').value;
+                    const res = await createUserWithEmailAndPassword(auth, email, password);
+                    await updateProfile(res.user, { displayName: name });
+                }
+                window.location.href = 'dashboard.html';
+            } catch (error) {
+                errorDiv.innerText = "Lỗi: " + error.message;
+                errorDiv.classList.remove('hidden');
+                btn.innerText = isLogin.value ? "Đăng nhập" : "Đăng ký ngay";
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

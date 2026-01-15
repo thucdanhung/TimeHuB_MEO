@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chi tiết | TimeHub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* Grid cho thời khóa biểu: Cột đầu là giờ, 7 cột sau là thứ 2-CN */
+        .timetable-grid {
+            display: grid;
+            grid-template-columns: 3rem repeat(7, 1fr); 
+            grid-template-rows: 2rem repeat(12, 1fr); /* 1 dòng tiêu đề + 12 tiết học */
+            gap: 2px;
+            background-color: #f3f4f6;
+            border: 1px solid #e5e7eb;
+        }
+        .cell { background: white; min-height: 3.5rem; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+        .header-cell { background: #f9fafb; font-weight: bold; color: #374151; position: sticky; top: 0; z-index: 10; }
+        .period-cell { background: #f9fafb; font-weight: bold; color: #9ca3af; justify-content: center; }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col">
+
+    <header class="bg-white border-b px-4 py-3 flex justify-between items-center shadow-sm z-20">
+        <div class="flex items-center gap-3">
+            <a href="dashboard.html" class="p-2 hover:bg-gray-100 rounded-full">⬅</a>
+            <h1 id="table-title" class="font-bold text-lg text-gray-800">Đang tải...</h1>
+        </div>
+        <button onclick="document.getElementById('event-modal').classList.remove('hidden')" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700">+ Thêm môn</button>
+    </header>
+
+    <main class="flex-grow overflow-auto p-2">
+        <div class="timetable-grid rounded-lg overflow-hidden" id="grid-container">
+            </div>
+    </main>
+
+    <div id="event-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-xl w-full max-w-sm p-5 shadow-2xl">
+            <h3 class="font-bold text-lg mb-4">Thêm môn học</h3>
+            <form id="add-event-form" class="space-y-3">
+                <input type="text" id="subject" placeholder="Tên môn (VD: Giải tích 1)" required class="w-full p-2 border rounded-lg">
+                <input type="text" id="room" placeholder="Phòng (VD: D5-101)" class="w-full p-2 border rounded-lg">
+                <div class="grid grid-cols-2 gap-3">
+                    <select id="day" class="p-2 border rounded-lg">
+                        <option value="2">Thứ 2</option><option value="3">Thứ 3</option>
+                        <option value="4">Thứ 4</option><option value="5">Thứ 5</option>
+                        <option value="6">Thứ 6</option><option value="7">Thứ 7</option>
+                        <option value="8">Chủ nhật</option>
+                    </select>
+                    <select id="color" class="p-2 border rounded-lg">
+                        <option value="bg-red-100 text-red-700 border-red-200">Đỏ</option>
+                        <option value="bg-blue-100 text-blue-700 border-blue-200">Xanh</option>
+                        <option value="bg-green-100 text-green-700 border-green-200">Lá</option>
+                        <option value="bg-yellow-100 text-yellow-700 border-yellow-200">Vàng</option>
+                        <option value="bg-purple-100 text-purple-700 border-purple-200">Tím</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <input type="number" id="start" placeholder="Tiết bắt đầu" min="1" max="12" required class="w-full p-2 border rounded-lg">
+                    <input type="number" id="end" placeholder="Tiết kết thúc" min="1" max="12" required class="w-full p-2 border rounded-lg">
+                </div>
+                <div class="flex justify-end gap-2 mt-4">
+                    <button type="button" onclick="document.getElementById('event-modal').classList.add('hidden')" class="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded-lg">Hủy</button>
+                    <button type="submit" class="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Lưu</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { db } from './js/firebase-config.js';
+        import { collection, addDoc, query, where, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const tableId = urlParams.get('id');
+        const tableName = urlParams.get('name');
+
+        document.getElementById('table-title').innerText = tableName || "Chi tiết";
+        if (!tableId) window.location.href = 'dashboard.html';
+
+        const grid = document.getElementById('grid-container');
+
+        // 1. Hàm vẽ khung lưới (Render Grid)
+        function renderBaseGrid() {
+            grid.innerHTML = '';
+            // Góc trên cùng trái
+            grid.innerHTML += `<div class="cell header-cell sticky left-0 z-20">Tiết</div>`;
+            
+            // Header Thứ
+            const days = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+            days.forEach(d => grid.innerHTML += `<div class="cell header-cell">${d}</div>`);
+
+            // Các ô trống
+            for (let i = 1; i <= 12; i++) {
+                grid.innerHTML += `<div class="cell period-cell sticky left-0 z-10">${i}</div>`;
+                for (let j = 0; j < 7; j++) {
+                    grid.innerHTML += `<div class="cell" style="grid-row: ${i + 1}; grid-column: ${j + 2}"></div>`;
+                }
+            }
+        }
+
+        // 2. Hàm vẽ môn học lên lưới
+        function renderEvents(events) {
+            renderBaseGrid(); // Reset lưới
+            
+            events.forEach(ev => {
+                const dayIndex = parseInt(ev.day); // 2 -> 8
+                const col = dayIndex; // Thứ 2 là cột 2
+                const rowStart = parseInt(ev.start) + 1; // +1 vì dòng 1 là header
+                const rowSpan = (parseInt(ev.end) - parseInt(ev.start)) + 1;
+
+                const el = document.createElement('div');
+                el.className = `m-1 p-2 rounded-lg border text-xs flex flex-col justify-center shadow-sm cursor-pointer hover:brightness-95 transition ${ev.color}`;
+                el.style.gridColumn = col;
+                el.style.gridRow = `${rowStart} / span ${rowSpan}`;
+                el.style.zIndex = 5; // Nổi lên trên ô trắng
+                
+                el.innerHTML = `
+                    <span class="font-bold truncate">${ev.subject}</span>
+                    <span class="truncate opacity-80">${ev.room}</span>
+                `;
+                grid.appendChild(el);
+            });
+        }
+
+        // 3. Lắng nghe dữ liệu realtime
+        const q = query(collection(db, "events"), where("tableId", "==", tableId));
+        onSnapshot(q, (snapshot) => {
+            const events = [];
+            snapshot.forEach(doc => events.push(doc.data()));
+            renderEvents(events);
+        });
+
+        // 4. Xử lý thêm môn
+        document.getElementById('add-event-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const start = parseInt(document.getElementById('start').value);
+            const end = parseInt(document.getElementById('end').value);
+
+            if (start > end) { alert("Tiết bắt đầu phải nhỏ hơn tiết kết thúc!"); return; }
+
+            try {
+                await addDoc(collection(db, "events"), {
+                    tableId: tableId,
+                    subject: document.getElementById('subject').value,
+                    room: document.getElementById('room').value,
+                    day: document.getElementById('day').value,
+                    color: document.getElementById('color').value,
+                    start: start,
+                    end: end
+                });
+                document.getElementById('event-modal').classList.add('hidden');
+                document.getElementById('add-event-form').reset();
+            } catch (err) {
+                alert("Lỗi: " + err.message);
+            }
+        });
+        
+        renderBaseGrid();
+    </script>
+</body>
+</html>
